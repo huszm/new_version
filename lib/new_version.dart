@@ -51,7 +51,7 @@ class VersionStatus {
     return false;
   }
 
-  VersionStatus._({
+  VersionStatus({
     required this.localVersion,
     required this.storeVersion,
     required this.appStoreLink,
@@ -109,6 +109,7 @@ class NewVersion {
     } else {
       debugPrint(
           'The target platform "${Platform.operatingSystem}" is not yet supported by this package.');
+      return null;
     }
   }
 
@@ -121,9 +122,11 @@ class NewVersion {
   /// JSON document.
   Future<VersionStatus?> _getiOSStoreVersion(PackageInfo packageInfo) async {
     final id = iOSId ?? packageInfo.packageName;
-    final countryCode = iOSAppStoreCountry ?? 'us';
-    final parameters = {"id": id};
-    var uri = Uri.https("itunes.apple.com", "/$countryCode/lookup", parameters);
+    final parameters = {"bundleId": "$id"};
+    if (iOSAppStoreCountry != null) {
+      parameters.addAll({"country": iOSAppStoreCountry!});
+    }
+    var uri = Uri.https("itunes.apple.com", "/lookup", parameters);
     final response = await http.get(uri);
     if (response.statusCode != 200) {
       debugPrint('Failed to query iOS App Store');
@@ -135,19 +138,21 @@ class NewVersion {
       debugPrint('Can\'t find an app in the App Store with the id: $id');
       return null;
     }
-    return VersionStatus._(
+    return VersionStatus(
       localVersion: _getCleanVersion(packageInfo.version),
-      storeVersion: _getCleanVersion(forceAppVersion ?? jsonObj['results'][0]['version']),
+      storeVersion:
+      _getCleanVersion(forceAppVersion ?? jsonObj['results'][0]['version']),
       appStoreLink: jsonObj['results'][0]['trackViewUrl'],
       releaseNotes: jsonObj['results'][0]['releaseNotes'],
     );
   }
 
   /// Android info is fetched by parsing the html of the app store page.
-  Future<VersionStatus?> _getAndroidStoreVersion(PackageInfo packageInfo) async {
+  Future<VersionStatus?> _getAndroidStoreVersion(
+      PackageInfo packageInfo) async {
     final id = androidId ?? packageInfo.packageName;
-    final uri =
-        Uri.https("play.google.com", "/store/apps/details", {"id": "$id", "hl": "en"});
+    final uri = Uri.https(
+        "play.google.com", "/store/apps/details", {"id": "$id", "hl": "en"});
     final response = await http.get(uri);
     if (response.statusCode != 200) {
       debugPrint('Can\'t find an app in the Play Store with the id: $id');
@@ -155,47 +160,46 @@ class NewVersion {
     }
     final document = parse(response.body);
 
-    String storeVersion = '0.0.0';
+    String? storeVersion = '0.0.0';
     String? releaseNotes;
 
     final additionalInfoElements = document.getElementsByClassName('hAyfc');
     if (additionalInfoElements.isNotEmpty) {
       final versionElement = additionalInfoElements.firstWhere(
-        (elm) => elm.querySelector('.BgcNfc')!.text == 'Current Version',
+            (elm) => elm.querySelector('.BgcNfc')!.text == 'Current Version',
       );
       storeVersion = versionElement.querySelector('.htlgb')!.text;
 
       final sectionElements = document.getElementsByClassName('W4P4ne');
       final releaseNotesElement = sectionElements.firstWhereOrNull(
-        (elm) => elm.querySelector('.wSaTQd')!.text == 'What\'s New',
+            (elm) => elm.querySelector('.wSaTQd')!.text == 'What\'s New',
       );
-      releaseNotes =
-          releaseNotesElement?.querySelector('.PHBdkd')?.querySelector('.DWPxHb')?.text;
+      releaseNotes = releaseNotesElement
+          ?.querySelector('.PHBdkd')
+          ?.querySelector('.DWPxHb')
+          ?.text;
     } else {
-      final scriptElements = document.getElementsByTagName('script');
-      final infoScriptElement = scriptElements.firstWhere(
-        (elm) => elm.text.contains('key: \'ds:4\''),
-      );
+      final regexp =
+      RegExp(r'\[\[\[\"(\d+\.\d+(\.[a-z]+)?(\.([^"]|\\")*)?)\"\]\]');
+      storeVersion = regexp.firstMatch(response.body)?.group(1);
 
-      final param = infoScriptElement.text
-          .substring(20, infoScriptElement.text.length - 2)
-          .replaceAll('key:', '"key":')
-          .replaceAll('hash:', '"hash":')
-          .replaceAll('data:', '"data":')
-          .replaceAll('sideChannel:', '"sideChannel":')
-          .replaceAll('\'', '"');
-      final parsed = json.decode(param);
-      final data = parsed['data'];
+      final regexpRelease =
+      RegExp(r'\[(null,)\[(null,)\"((\.[a-z]+)?(([^"]|\\")*)?)\"\]\]');
 
-      storeVersion = data[1][2][140][0][0][0];
-      releaseNotes = data[1][2][144][1][1];
+      releaseNotes = regexpRelease.firstMatch(response.body)?.group(3);
     }
 
-    return VersionStatus._(
+    final expRemoveSc = RegExp(
+      r"\\u003c[A-Za-z]{1,10}\\u003e",
+      multiLine: true,
+      caseSensitive: true,
+    );
+
+    return VersionStatus(
       localVersion: _getCleanVersion(packageInfo.version),
-      storeVersion: _getCleanVersion(forceAppVersion ?? storeVersion),
+      storeVersion: _getCleanVersion(forceAppVersion ?? storeVersion ?? ''),
       appStoreLink: uri.toString(),
-      releaseNotes: releaseNotes,
+      releaseNotes: releaseNotes?.replaceAll(expRemoveSc, ''),
     );
   }
 
@@ -232,29 +236,29 @@ class NewVersion {
     List<Widget> actions = [
       Platform.isAndroid
           ? TextButton(
-              child: updateButtonTextWidget,
-              onPressed: updateAction,
-            )
+        child: updateButtonTextWidget,
+        onPressed: updateAction,
+      )
           : CupertinoDialogAction(
-              child: updateButtonTextWidget,
-              onPressed: updateAction,
-            ),
+        child: updateButtonTextWidget,
+        onPressed: updateAction,
+      ),
     ];
 
     if (allowDismissal) {
       final dismissButtonTextWidget = Text(dismissButtonText);
-      dismissAction =
-          dismissAction ?? () => Navigator.of(context, rootNavigator: true).pop();
+      dismissAction = dismissAction ??
+              () => Navigator.of(context, rootNavigator: true).pop();
       actions.add(
         Platform.isAndroid
             ? TextButton(
-                child: dismissButtonTextWidget,
-                onPressed: dismissAction,
-              )
+          child: dismissButtonTextWidget,
+          onPressed: dismissAction,
+        )
             : CupertinoDialogAction(
-                child: dismissButtonTextWidget,
-                onPressed: dismissAction,
-              ),
+          child: dismissButtonTextWidget,
+          onPressed: dismissAction,
+        ),
       );
     }
 
@@ -265,15 +269,15 @@ class NewVersion {
         return WillPopScope(
             child: Platform.isAndroid
                 ? AlertDialog(
-                    title: dialogTitleWidget,
-                    content: dialogTextWidget,
-                    actions: actions,
-                  )
+              title: dialogTitleWidget,
+              content: dialogTextWidget,
+              actions: actions,
+            )
                 : CupertinoAlertDialog(
-                    title: dialogTitleWidget,
-                    content: dialogTextWidget,
-                    actions: actions,
-                  ),
+              title: dialogTitleWidget,
+              content: dialogTextWidget,
+              actions: actions,
+            ),
             onWillPop: () => Future.value(allowDismissal));
       },
     );
@@ -282,12 +286,9 @@ class NewVersion {
   /// Launches the Apple App Store or Google Play Store page for the app.
   Future<void> launchAppStore(String appStoreLink) async {
     debugPrint(appStoreLink);
-    final Uri uri = Uri.parse(appStoreLink);
+    final uri = Uri.parse(appStoreLink);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalNonBrowserApplication,
-      );
+      await launchUrl(uri);
     } else {
       throw 'Could not launch appStoreLink';
     }
