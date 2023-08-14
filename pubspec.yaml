@@ -1,6 +1,6 @@
 name: new_version
 description: Check if your user has the most recent version of your Flutter app.
-version: 0.3.4
+version: 0.4.0
 homepage: https://github.com/huszm/new_version
 
 environment:
