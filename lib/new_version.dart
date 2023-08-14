@@ -286,9 +286,12 @@ class NewVersion {
   /// Launches the Apple App Store or Google Play Store page for the app.
   Future<void> launchAppStore(String appStoreLink) async {
     debugPrint(appStoreLink);
-    final uri = Uri.parse(appStoreLink);
+    final Uri uri = Uri.parse(appStoreLink);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+      await launchUrl(
+        uri,
+        mode: LaunchMode.externalNonBrowserApplication,
+      );
     } else {
       throw 'Could not launch appStoreLink';
     }
