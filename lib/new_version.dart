@@ -290,7 +290,7 @@ class NewVersion {
     if (await canLaunchUrl(uri)) {
       await launchUrl(
         uri,
-        mode: LaunchMode.externalNonBrowserApplication,
+        mode: LaunchMode.externalApplication,
       );
     } else {
       throw 'Could not launch appStoreLink';
